@@ -1,90 +1,147 @@
-# AI Audio Support Agent
+# 🎧 VoiceDesk — AI Audio Customer Support Agent
 
-A full-stack audio-powered customer support agent built with Speech-to-Text (STT), a LangChain ReAct LLM agent with Retrieval-Augmented Generation (RAG), and Text-to-Speech (TTS). Users speak a question, the system transcribes it, queries a knowledge base, generates a response, and speaks it back — all in one pipeline.
+> **A fully voice-driven customer support pipeline powered by OpenAI Whisper, LangChain ReAct + RAG, and Microsoft Edge TTS — from spoken question to spoken answer in one shot.**
 
-## Pipeline
+---
+
+## What It Does
+
+You speak. VoiceDesk transcribes your voice with Whisper, routes the query through a LangChain ReAct agent that searches a local ChromaDB knowledge base (RAG), generates a grounded response with an LLM (Groq / LLaMA or OpenAI), and converts the reply back to audio using Edge TTS — all in a single async pipeline.
 
 ```
-Audio Input → STT (Whisper) → LLM Agent + RAG (Groq / LLaMA) → TTS (Edge TTS) → Audio Output
+🎤 Audio Input
+     │
+     ▼
+┌──────────────┐
+│  STT Layer   │  OpenAI Whisper (local, base model)
+│  base_stt.py │  soundfile decode → 16 kHz mono → Whisper inference
+└──────┬───────┘
+       │  transcribed text
+       ▼
+┌──────────────────────────┐
+│  LLM Agent + RAG Layer   │  LangChain ReAct Agent
+│  agent.py                │  ┌─ ChromaDB knowledge_search tool
+│                          │  │  16 docs · all-MiniLM-L6-v2 embeddings
+│                          │  └─ Top-3 semantic matches injected as context
+│                          │  Groq (LLaMA-3.3-70B) or OpenAI GPT-3.5
+└──────┬───────────────────┘
+       │  agent response text
+       ▼
+┌──────────────┐
+│  TTS Layer   │  Microsoft Edge TTS (free, en-US-AriaNeural)
+│  base_tts.py │  Streams MP3 audio bytes
+└──────┬───────┘
+       │
+       ▼
+🔊 Audio Output  (+  📝 Transcript  +  ⏱ Processing time)
 ```
 
-## Features
+---
 
-- **Voice-to-voice** customer support pipeline
-- **RAG knowledge base** with 16 customer support documents stored in ChromaDB
-- **Semantic search** using sentence-transformers (`all-MiniLM-L6-v2`)
-- **FastAPI** backend with REST endpoints
-- **Streamlit UI** with text chat, audio upload/recording, health monitor, and transcript display
-- Fully async pipeline — non-blocking throughout
+## Tech Stack
 
-## Stack
+| Layer | Technology | Notes |
+|---|---|---|
+| **STT** | OpenAI Whisper (`base`) | Local inference — no API key needed |
+| **LLM** | Groq API — LLaMA 3.3 70B Versatile | Falls back to OpenAI GPT-3.5-Turbo |
+| **RAG** | ChromaDB + `sentence-transformers` | Persistent vector store at `data/chroma_db/` |
+| **TTS** | Microsoft Edge TTS | Free, no API key, streamed MP3 |
+| **API** | FastAPI + Uvicorn | REST endpoints with CORS |
+| **UI** | Streamlit | Dark-theme, tabs: text chat / audio chat / health / docs |
+| **Agent** | LangChain ReAct (`langchain-classic`) | ConversationBufferMemory, max 5 iterations |
 
-| Layer | Technology |
-|---|---|
-| STT | OpenAI Whisper (local, `base` model) |
-| LLM | Groq API — LLaMA 3.3 70B Versatile |
-| RAG | ChromaDB + sentence-transformers |
-| TTS | Microsoft Edge TTS (free, no API key) |
-| API | FastAPI + Uvicorn |
-| UI | Streamlit |
+---
 
 ## Project Structure
 
 ```
 audio_support_agent/
 ├── src/
+│   ├── pipeline.py              # AudioSupportPipeline — STT → LLM → TTS orchestrator
 │   ├── stt/
-│   │   └── base_stt.py          # Whisper STT with soundfile + ffmpeg fallback
+│   │   └── base_stt.py          # BaseSTT + STTService (Whisper, soundfile/ffmpeg fallback)
 │   ├── llm/
-│   │   └── agent.py             # LangChain ReAct agent with ChromaDB RAG
+│   │   └── agent.py             # BaseAgent + CustomerSupportAgent (LangChain ReAct + ChromaDB RAG)
 │   ├── tts/
-│   │   └── base_tts.py          # Edge TTS synthesis
+│   │   └── base_tts.py          # BaseTTS + TTSService (Edge TTS, streaming synthesis)
 │   ├── api/
-│   │   └── server.py            # FastAPI server
-│   ├── utils/
-│   │   └── kb_test.py           # Knowledge base debug utility
-│   └── pipeline.py              # STT → LLM → TTS orchestrator
+│   │   └── server.py            # FastAPI server — /health /chat/text /chat/audio /debug/stt
+│   └── utils/
+│       └── kb_test.py           # CLI debug tool for inspecting ChromaDB & testing RAG queries
+├── data/
+│   └── chroma_db/               # Persistent vector store (auto-created on first run)
 ├── docs/
 │   └── RAG_IMPLEMENTATION_GUIDE.md
 ├── tests/
+│   ├── __init__.py
+│   └── test_stt.py              # Unit + integration tests for STT layer
 ├── streamlit_app.py             # Streamlit UI
 ├── requirements.txt
-└── .env.example
+├── .env.example
+└── .gitignore
 ```
+
+---
+
+## Prerequisites
+
+- Python **3.10+**
+- [ffmpeg](https://ffmpeg.org/download.html) on your `PATH` (for non-WAV audio formats)
+- A **Groq API key** (free at [console.groq.com](https://console.groq.com)) **or** an OpenAI API key
+
+---
 
 ## Setup
 
-### 1. Clone & install
+### 1. Clone & create virtual environment
 
 ```bash
-git clone https://github.com/Krishivvv/AI-Audio-Support-Agent.git
-cd AI-Audio-Support-Agent
+git clone https://github.com/your-username/voicedesk.git
+cd voicedesk/audio_support_agent
 
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-source .venv/bin/activate
 
+# Windows
+.venv\Scripts\activate
+
+# macOS / Linux
+source .venv/bin/activate
+```
+
+### 2. Install dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment
+> **Note:** The first run downloads the Whisper `base` model (~145 MB) and the `all-MiniLM-L6-v2` sentence-transformer (~90 MB) automatically.
+
+### 3. Configure environment
 
 ```bash
+# Windows
+copy .env.example .env
+
+# macOS / Linux
 cp .env.example .env
 ```
 
-Edit `.env` and set your API keys. At minimum you need a Groq key (free at [console.groq.com](https://console.groq.com)):
+Edit `.env` and set at minimum your LLM key:
 
 ```env
-GROQ_API_KEY=your_groq_api_key_here
+# Option A — Groq (recommended, free tier)
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 GROQ_MODEL=llama-3.3-70b-versatile
+
+# Option B — OpenAI
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-STT uses local Whisper and TTS uses Edge TTS — both are free with no API key required.
+STT (Whisper) and TTS (Edge TTS) are fully local/free — no additional keys needed.
 
-### 3. Run
+### 4. Run
+
+Open **two terminals** from inside `audio_support_agent/`:
 
 **Terminal 1 — API server:**
 ```bash
@@ -96,20 +153,28 @@ python -m src.api.server
 streamlit run streamlit_app.py
 ```
 
-Open **http://localhost:8501** for the UI, or **http://localhost:8000/docs** for the raw API.
+| Service | URL |
+|---|---|
+| Streamlit UI | http://localhost:8501 |
+| FastAPI docs (Swagger) | http://localhost:8000/docs |
+| FastAPI docs (ReDoc) | http://localhost:8000/redoc |
 
-## API Endpoints
+---
 
-| Method | Endpoint | Description |
+## API Reference
+
+### Endpoints
+
+| Method | Path | Description |
 |---|---|---|
-| `GET` | `/` | API info |
-| `GET` | `/health` | Component health check |
-| `POST` | `/chat/text` | Text → LLM → text response |
-| `POST` | `/chat/audio` | Audio → STT → LLM → TTS → audio response |
-| `GET` | `/chat/audio/{text}` | TTS-only: text to audio file |
-| `POST` | `/debug/stt` | STT-only: transcribe an audio file |
+| `GET` | `/` | API metadata (name, version, doc links) |
+| `GET` | `/health` | Component health: pipeline / STT / LLM / TTS |
+| `POST` | `/chat/text` | Text → LLM → text + processing time |
+| `POST` | `/chat/audio` | Audio → STT → LLM → TTS → base64 MP3 + transcript + timing |
+| `GET` | `/chat/audio/{text}` | TTS-only: returns raw MP3 bytes for a given text |
+| `POST` | `/debug/stt` | STT-only: upload audio, get back raw transcription |
 
-### Quick test
+### Example requests
 
 ```bash
 # Health check
@@ -120,46 +185,194 @@ curl -X POST http://localhost:8000/chat/text \
   -H "Content-Type: application/json" \
   -d '{"text": "What is your return policy?"}'
 
-# Audio pipeline
+# Full audio pipeline
 curl -X POST http://localhost:8000/chat/audio \
-  -F "audio=@my_question.wav" --output response.mp3
+  -F "audio=@my_question.wav" \
+  | jq '{transcript, processing_time_ms}'
+
+# Debug STT only
+curl -X POST http://localhost:8000/debug/stt \
+  -F "audio=@my_question.wav"
 ```
 
-## Knowledge Base
+### Audio response payload
 
-The RAG system contains 16 customer support documents across these categories:
+```json
+{
+  "success": true,
+  "audio_response": "<base64-encoded MP3>",
+  "transcript": {
+    "user_input": "What is the return policy?",
+    "agent_response": "We offer a 30-day return policy for all products..."
+  },
+  "processing_time_ms": 3142
+}
+```
 
-- **Returns** — 30-day policy, return steps, non-returnable items
-- **Shipping** — methods, times, international shipping, order tracking
-- **Support** — contact info, response times
-- **Warranty & Technical** — product warranty, tech support hours
-- **Account & Orders** — account management, order modifications
-- **Payment & Billing** — accepted payment methods, invoices
-- **Products** — availability, size guides
+---
 
-ChromaDB stores embeddings persistently in `data/chroma_db/` — no re-ingestion needed on restart.
+## Knowledge Base (RAG)
 
-## How the RAG Works
+The agent answers from **16 pre-loaded customer support documents** across 10 categories, stored as vector embeddings in ChromaDB. No external knowledge base setup is needed — documents are ingested automatically on the first run.
 
-1. User query is embedded using `all-MiniLM-L6-v2`
-2. ChromaDB returns the top-3 most semantically similar documents
-3. Documents are injected into the LangChain ReAct agent's context
-4. LLaMA 3.3 generates a grounded response from the retrieved content
+| Category | Documents |
+|---|---|
+| `returns` | Return policy overview, return process steps, non-returnable items |
+| `shipping` | Shipping methods & times, international shipping, order tracking |
+| `support` | Contact information, response times |
+| `warranty` | Product warranty coverage |
+| `technical` | Technical support hours & channels |
+| `account` | Account management |
+| `orders` | Order modifications & cancellations |
+| `payment` | Accepted payment methods |
+| `billing` | Billing and invoices |
+| `products` | Product availability, size & fit guide |
 
-See [docs/RAG_IMPLEMENTATION_GUIDE.md](docs/RAG_IMPLEMENTATION_GUIDE.md) for technical details.
+### How RAG works
 
-## Audio Tips
+1. **Ingest** — On first startup, each document is embedded using `all-MiniLM-L6-v2` and written to ChromaDB at `data/chroma_db/`. Subsequent restarts skip re-ingestion.
+2. **Query** — The LangChain `knowledge_search` tool is called by the ReAct agent. ChromaDB performs cosine-similarity search and returns the top-3 most relevant documents.
+3. **Generate** — Matched documents (with title, category, relevance %) are injected into the agent's context, and the LLM generates a grounded response.
 
-- WAV format at 16 kHz mono gives the best Whisper accuracy
-- For other formats (MP3, OGG, FLAC), install [ffmpeg](https://ffmpeg.org/download.html) and add it to your PATH
-- The pipeline also accepts audio recorded directly in the Streamlit UI (requires `sounddevice`)
+```
+Question: What is the return policy?
+Thought: I need to look up return policy information.
+Action: knowledge_search
+Action Input: return policy
+Observation: **Return Policy Overview** (Category: returns, Relevance: 94.2%)
+             We offer a 30-day return policy...
+Thought: I now know the final answer.
+Final Answer: Our return policy allows returns within 30 days...
+```
+
+**Test the knowledge base directly:**
+
+```bash
+python src/utils/kb_test.py
+```
+
+---
+
+## Streamlit UI Tabs
+
+| Tab | Description |
+|---|---|
+| 💬 **Text Chat** | Type a question → get a text response with processing time; stores up to 10 messages in history |
+| 🎙️ **Enhanced Audio Chat** | Record via microphone or upload WAV/MP3/OGG/FLAC → full pipeline → playable MP3 response + transcript card |
+| 📊 **Health Monitor** | Live status of all three pipeline components with per-component ready indicators |
+| 📖 **Docs** | Quick-start server commands and endpoint reference |
+
+---
+
+## Pipeline Architecture
+
+### `AudioSupportPipeline` (`src/pipeline.py`)
+
+| Method | Description |
+|---|---|
+| `initialize()` | Async init of STT → LLM → TTS in sequence; raises on any component failure |
+| `process_audio(audio_bytes)` | Full pipeline; returns `bytes` (response audio) |
+| `process_audio_with_transcript(audio_bytes)` | Full pipeline; returns `(audio_bytes, TranscriptData, processing_time_ms)` |
+| `process_text(text)` | LLM + TTS only (skip STT); returns `(response_text, audio_bytes)` |
+| `process_text_with_timing(text)` | LLM only with timing; returns `(response_text, processing_time_ms)` |
+| `health_check()` | Dict of `bool` per component |
+| `cleanup()` | Gracefully shuts down all components |
+
+### `STTService` (`src/stt/base_stt.py`)
+
+- Loads Whisper `base` model locally (configurable via `stt_config["model"]`)
+- Decodes audio via `soundfile` in-memory; falls back to temp-file + ffmpeg for other formats
+- Resamples to 16 kHz mono before Whisper inference
+- Runs in a thread pool via `asyncio.to_thread` to avoid blocking the event loop
+
+### `CustomerSupportAgent` (`src/llm/agent.py`)
+
+- `langchain-classic` ReAct agent with `ConversationBufferMemory`
+- Single tool: `knowledge_search` → `_rag_search()` → ChromaDB cosine query
+- Supports Groq (via OpenAI-compatible base URL) and native OpenAI APIs
+- Max 5 agent iterations; graceful fallback to direct RAG result on executor errors
+
+### `TTSService` (`src/tts/base_tts.py`)
+
+- Microsoft Edge TTS via `edge-tts` (free, requires internet)
+- Default voice: `en-US-AriaNeural` (configurable via `tts_config["voice"]`)
+- Streams MP3 chunks; returns complete `bytes` object
+- `synthesize_stream()` wraps bytes in `io.BytesIO` for streaming-compatible consumers
+
+---
+
+## Running Tests
+
+```bash
+# From audio_support_agent/
+pytest tests/ -v
+
+# Run integration tests (requires a real API key)
+pytest tests/ -v -m integration
+```
+
+---
 
 ## Troubleshooting
 
-| Problem | Fix |
+| Symptom | Fix |
 |---|---|
-| `ImportError` | Run `pip install -r requirements.txt` from the project root |
-| Port 8000 in use | Kill the existing process or change `SERVER_PORT` in `.env` |
-| Empty transcription | Speak clearly; use 16 kHz WAV; check microphone levels |
-| No audio output | Verify internet connection (Edge TTS needs it) |
-| Whisper slow | Switch to `"model": "tiny"` in `stt_config` inside `server.py` |
+| `ImportError` on startup | Run `pip install -r requirements.txt` inside the venv |
+| Pipeline stays `unhealthy` | Check `.env` has a valid `GROQ_API_KEY` or `OPENAI_API_KEY` and restart the server |
+| Port 8000 already in use | `SERVER_PORT=8001` in `.env`, then `python -m src.api.server` |
+| Empty transcription | Speak clearly; use 16 kHz WAV mono; check mic levels |
+| Whisper very slow | Change `"model": "tiny"` in `stt_config` inside `server.py` startup |
+| Edge TTS returns no audio | Verify internet connection — Edge TTS calls Microsoft servers |
+| `ffmpeg not found` on non-WAV audio | Install [ffmpeg](https://ffmpeg.org/download.html) and add it to your system PATH |
+| ChromaDB re-ingesting every run | Delete `data/chroma_db/` and let it rebuild cleanly |
+
+---
+
+## Configuration Reference
+
+All configuration lives in `.env` (copy from `.env.example`):
+
+```env
+# LLM — pick one
+GROQ_API_KEY=gsk_...
+GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_BASE_URL=https://api.groq.com/openai/v1
+
+OPENAI_API_KEY=sk-...
+
+# Optional STT/TTS service keys (not needed for default Whisper + Edge TTS setup)
+DEEPGRAM_API_KEY=...
+ELEVENLABS_API_KEY=...
+
+# Server
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8000
+DEBUG=true
+LOG_LEVEL=INFO
+```
+
+---
+
+## Extending the Agent
+
+### Swap the STT engine
+
+Implement `BaseSTT` in `src/stt/base_stt.py` — the abstract interface requires `initialize()`, `transcribe(audio_bytes)`, and `cleanup()`. The pipeline calls them automatically.
+
+### Swap the TTS engine
+
+Implement `BaseTTS` in `src/tts/base_tts.py` — requires `initialize()`, `synthesize(text)`, `synthesize_stream(text)`, and `cleanup()`.
+
+### Add agent tools
+
+Add new `Tool` objects inside `CustomerSupportAgent._create_tools()` in `src/llm/agent.py`. The ReAct agent will automatically choose the appropriate tool based on the query.
+
+### Add knowledge base documents
+
+Extend `_get_customer_support_documents()` in `agent.py` with new `{title, category, content}` dicts. Delete `data/chroma_db/` and restart to re-ingest.
+
+---
+
+## License
+
+MIT — see `LICENSE` for details.
